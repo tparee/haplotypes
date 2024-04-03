@@ -3,8 +3,6 @@ library(readr)
 #########################################################################
 ################ FUNCTIONS ##############################################
 
-
-
 countBreaks = function(windows, rils, foundergt,info){
   do.call(rbind, lapply(1:(length(windows)-1), function(i){
     
@@ -123,12 +121,13 @@ InferFoundersHaploBlocks = function(founder1, founder2, rils, info,nsnpWin = 50,
 
 
 #founderhaplotypes = founderhaplotypessave
+# founderhaplotypesave = founderhaplotypes
 phaseHaplotypes = function(founderhaplotypes){
   
   i = 1
-  #while(i < 379){
+  #while(i < 46){
   while(i < length(founderhaplotypes)-1 ){
-    #print(i)
+    print(i)
     
     fi = founderhaplotypes[[i]]$foundergt
     fj = founderhaplotypes[[i+1]]$foundergt
@@ -154,7 +153,8 @@ phaseHaplotypes = function(founderhaplotypes){
     shift = c(apply(shift, 2, function(x){if(x==1){c(1,2)}else{c(2,1)}})) + c(0,0,2,2)
     
     haploall_phased = rbind(fi, fj[,shift])
-    nbreaksPhased = nbreaks[which.min(nbreaks)]
+    #nbreaksPhased = nbreaks[which.min(nbreaks)]
+    nbreaksPhased = countBreaks(windows=c(1,nrow(haploall_phased)), rils=rils[winall,], foundergt=haploall_phased, info=info[winall,])$nbreak
     
     haploall_infered = InferFoundersHaploBlocks(founder1=founder1[winall,],
                                                 founder2=founder2[winall,],
@@ -167,10 +167,12 @@ phaseHaplotypes = function(founderhaplotypes){
     
     haploall_infered = haploall_infered$foundergt
     
+    
+    
     #hapdist = sum(abs(haploall_infered - haploall_phased),na.rm=T)
     
-    countBreaks(windows=c(1,nrow(haploall_infered)), rils=rils[winall,], foundergt=haploall_infered, info=info[winall,])$nbreak
-    countBreaks(windows=c(1,nrow(haploall_infered)), rils=rils[winall,], foundergt=haploall_phased, info=info[winall,])$nbreak
+    #countBreaks(windows=c(1,nrow(haploall_infered)), rils=rils[winall,], foundergt=haploall_infered, info=info[winall,])$nbreak
+    #countBreaks(windows=c(1,nrow(haploall_infered)), rils=rils[winall,], foundergt=haploall_phased, info=info[winall,])$nbreak
     
     choosePhased =  nbreaksInfered >= nbreaksPhased
     
@@ -200,7 +202,7 @@ phaseHaplotypes = function(founderhaplotypes){
 #########################################################################
 #########################################################################
 founders <- read_csv("~/Downloads/Cross_ABC_I_Pool_GT_table.csv")
-rils <- read_csv("~/Downloads/becei_chr_I_Cross_A_filtered_genotype_table.csv")
+rils <- read_csv("/Users/tomparee/Documents/Documents - MacBook Pro de tom/rockmanlab/cbecei_haplo/becei_chr_I_Cross_B_filtered_genotype_table.csv")
 founders = founders[match(rils$ID, founders$ID),]
 
 # some formating
@@ -219,9 +221,15 @@ rils = rils[!fixed,]
 info = info[!fixed,]
 founders = founders[!fixed,]
 
+badsnps = "I:3851354:T-G" #snp that is really suspicious (lot of NA value and cause many breakpoints which is consistent with genotyping error)
+
+rils[(info$ID %in% badsnps), ]=NA
+founders[(info$ID %in% badsnps), ] = NA
+
+
 #founder 1 & 2 in format snp x two haplotype
 founder1 = founders$FM
-founder2 = founders$FA
+founder2 = founders$FB
 founder1 = do.call(rbind, lapply(strsplit(founder1, "/"), function(x){as.numeric(x)}))
 founder2 = do.call(rbind, lapply(strsplit(founder2, "/"), function(x){as.numeric(x)}))
 
@@ -234,16 +242,16 @@ founder2 = do.call(rbind, lapply(strsplit(founder2, "/"), function(x){as.numeric
 # Then the major haplotypes are attributed to each founders in the way that minimize the change from the initially inferred genotypes (given in founder1 and founder2)
 # The function return the four founder hap in  c("founder1.g1","founder1.g2","founder2.g1","founder2.g2") order for each window, in a list
 founderhaplotypes = InferFoundersHaploBlocks(founder1=founder1, founder2=founder2, rils=rils, info=info)
-
+#founderhaplotypes = founderhaplotypessave
 #This function phase the haplotype block inferred above in a way that minimize the number of breakpoints
 founderhaplotypes = phaseHaplotypes(founderhaplotypes)
 
 #As a "control" we can count the number of breaks that happened in different intervals
 #(= the haplotype that are not identical to one founder for a given window)
 # window by snps:
-windows = seq(1,nrow(founderhaplotypes2), 100)
-windows[length(windows)]=nrow(founderhaplotypes2)
-breakBins = countBreaks(windows, rils, founderhaplotypes2, info)
+windows = seq(1,nrow(founderhaplotypes), 100)
+windows[length(windows)]=nrow(founderhaplotypes)
+breakBins = countBreaks(windows, rils, founderhaplotypes, info)
 
 # we are very close from the number of recombination event one may expect from 5 generation of oucrossing with 1 CO per meiosis
 # expected: 148 lines * 5 generation * 0.5 CO per chrom = 370
@@ -265,7 +273,7 @@ ggplot()+theme_minimal()+
 
 #window by genetic distances:
 windows = sapply(seq(0,max(info$cM), 5), function(x){ which.min(abs(info$cM-x))})
-breakBins = countBreaks(windows, rils, founderhaplotypes2, info)
+breakBins = countBreaks(windows, rils, founderhaplotypes, info)
 
 
 ggplot()+theme_minimal()+theme(legend.position = "none")+
@@ -276,12 +284,39 @@ ggplot()+theme_minimal()+theme(legend.position = "none")+
 
 # save
 
-founderCrossA = matrix(NA, ncol=4, nrow=nrow(rilsall))
-colnames(founderCrossA) = c("founderM.g1","founderM.g2", "founderA.g1","founderA.g2")
-founderCrossA[fixed] = matrix(apply(rilsall[fixed,], 1, mean, na.rm=T), ncol=1)[1:sum(fixed), rep(1,4)]
-founderCrossA[!fixed] = founderhaplotypes
-founderCrossA = cbind(infoall,founderCrossA)
-save(founderCrossA, file="/Users/tomparee/Documents/Documents - MacBook Pro de tom/rockmanlab/cbecei_haplo/founderHaplotypesCrossA.Rdata")
+#founderCrossA = matrix(NA, ncol=4, nrow=nrow(rilsall))
+#colnames(founderCrossA) = c("founderM.g1","founderM.g2", "founderA.g1","founderA.g2")
+#founderCrossA[fixed] = matrix(apply(rilsall[fixed,], 1, mean, na.rm=T), ncol=1)[1:sum(fixed), rep(1,4)]
+#founderCrossA[!fixed] = founderhaplotypes
+#founderCrossA = cbind(infoall,founderCrossA)
+#save(founderCrossA, file="/Users/tomparee/Documents/Documents - MacBook Pro de tom/rockmanlab/cbecei_haplo/founderHaplotypesCrossA.Rdata")
+
+
+founderCrossB = matrix(NA, ncol=4, nrow=nrow(rilsall))
+colnames(founderCrossB) = c("founderM.g1","founderM.g2", "founderB.g1","founderB.g2")
+founderCrossB[fixed] = matrix(apply(rilsall[fixed,], 1, mean, na.rm=T), ncol=1)[1:sum(fixed), rep(1,4)]
+founderCrossB[!fixed] = founderhaplotypes
+founderCrossB = cbind(infoall,founderCrossB)
+save(founderCrossB, file="/Users/tomparee/Documents/Documents - MacBook Pro de tom/rockmanlab/cbecei_haplo/founderHaplotypesCrossB.Rdata")
+
+
+# Compare Founder M inferred from cross A or B
+load(file="/Users/tomparee/Documents/Documents - MacBook Pro de tom/rockmanlab/cbecei_haplo/founderHaplotypesCrossA.Rdata")
+load(file="/Users/tomparee/Documents/Documents - MacBook Pro de tom/rockmanlab/cbecei_haplo/founderHaplotypesCrossB.Rdata")
+
+mm = match(founderCrossA$ID, founderCrossB$ID)
+founderCrossB = founderCrossB[mm,]
+
+# SNP that are different. FM genome 1 infered from cross A or B
+nomatch = which( (founderCrossA$founderM.g1 == founderCrossB$founderM.g1)==F)
+
+# Does this snps correspond to the other genome
+# (indicating a phase swap)
+founderCrossA$founderM.g1[nomatch] == founderCrossB$founderM.g2[nomatch] 
+
+
+
+
 
 
 #20301
@@ -290,24 +325,31 @@ save(founderCrossA, file="/Users/tomparee/Documents/Documents - MacBook Pro de t
 #21601
 #21701
 
-# countBreaks(windows, rils, foundergt, info)
-# founderhaplotypes2[21601:21701,]
-# breakBins = countBreaks(1:length(21601:21701), rils[21601:21701,], founderhaplotypes2[21601:21701,], info[21601:21701,])
-# 
-# countBreaks(1:length(20301:20401), rils[20301:20401,], founderhaplotypes2[20301:20401,], info[20301:20401,])
-# 
-# test = founderhaplotypes2[18890:18910,]
-# 
-# View(rils[21601:21701,])
-# founderhaplotypes2[21601:21701,]
-# 
-# 
-# cutree(hclust(dist(t(rils[20301:20401,]))),h=0)
-# 
-# grouprils = cutree(hclust(dist(t(rils[20340:20380,]))),h=0)
-# npergroup = table(grouprils)
-# npergroup = npergroup[npergroup>10]
-# npergroup = sort(npergroup, decreasing = T)
+#5801:5901+> #7th snp is problematix
+#32601:32701
+
+#i = 32601
+#j = 32700
+
+
+
+#gx = rils[i:j,]
+#fgt = founderhaplotypes2[i:j,]
+#infox = info[i:j,]
+#nbreaktot = countBreaks(c(1,length(i:j)), gx, fgt, infox)$nbreak
+#breakSingleSNPs = countBreaks(1:length(i:j), rils[i:j,], founderhaplotypes2[i:j,], info[i:j,])
+
+#countBreaks(1:length(i:j), rils[i:j,], founderhaplotypes2[i:j,], info[i:j,])
+
+#
+#View(rils[i:j,])
+#founderhaplotypes2[i:j,]
+
+
+#grouprils = cutree(hclust(dist(t(rils[i:j,]))),h=0)
+#npergroup = table(grouprils)
+#npergroup = npergroup[npergroup>10]
+#npergroup = sort(npergroup, decreasing = T)
 # if(length(npergroup)>4) npergroup=npergroup[1:4]
 
 # inferPhaseFromRilsLD = function(founder1, founder2, rils, info, LORth = 3){
